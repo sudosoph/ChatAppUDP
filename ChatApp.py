@@ -1,5 +1,6 @@
 import socket
 import os
+import time
 from enum import Enum
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
@@ -19,6 +20,7 @@ import logging
 # TODO add timestamp to offline message .data property
 # TODO add offline data structure to ClientInstance dataclass
 # TODO clean up message formatting to match assignment examples
+
 
 MSG_SIZE = 4096
 
@@ -289,7 +291,7 @@ class Client:
                 
                 for _ in range(5):
                     if not self.ack_checker[send_hash]:
-                        os.sleep(0.5)
+                        time.sleep(0.5)
                     else:
                         self.online = True
                         continue
