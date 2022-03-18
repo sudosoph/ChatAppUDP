@@ -9,7 +9,6 @@ from queue import Queue
 import json
 import logging
 
-# TODO Implement notfied leave / deregister
 # TODO Implement server-side client health checks
 # TODO Implement ACK for message receipt, update receipt, etc.
 # TODO Implement client message send ACK check -> server disable client
@@ -20,7 +19,6 @@ import logging
 # TODO add timestamp to offline message .data property
 # TODO add offline data structure to ClientInstance dataclass
 # TODO clean up message formatting to match assignment examples
-# TODO 
 
 MSG_SIZE = 4096
 
@@ -46,6 +44,9 @@ class Message:
 
     def __str__(self):
         return f'{self.event_id}|{self.nickname}|{self.recipient}|{self.data}'
+
+    def __hash__(self):
+        return hash((self.event_id, self.nickname, self.data, self.recipient))
 
 @dataclass_json
 @dataclass
@@ -121,7 +122,7 @@ class Server:
                 f'CLIENT REGISTERED: {nickname} to {addr[0]}:{addr[1]}')
 
         self.direct_message(self.server_persona, Message(event_id=Events.REGISTER_CONFIRM, nickname=self.nickname, 
-                            recipient=client.nickname, data='[[Welcome, you are registerd.]]'))
+                            recipient=client.nickname, data='[[Welcome, you are registered.]]'))
         self.update_clients()
 
     def update_clients(self):
@@ -162,6 +163,8 @@ class Server:
         if msg.event_id == Events.REGISTER:
             self.logger.info(f'REGISTER REQUEST: {addr}->{msg.nickname}')
             self.register_client(addr, msg.nickname)
+            ack_msg = Message(event_id = Events.ACK, nickname = "Server", data = hash(msg), recipient = msg.nickname)
+            self.direct_message(self.server_persona, ack_msg)
 
         if msg.event_id == Events.DEREGISTER:
             client = self.get_client(msg.nickname)
@@ -223,6 +226,7 @@ class Client:
         self.nickname = name
         self.peers = []
         self.logger = logger
+        self.ack_checker = {}
 
         self.client_start()
 
@@ -273,18 +277,32 @@ class Client:
                     print(peer)
                 continue
 
-            elif data.startswith('reg '):
+            elif data.startswith('dereg '):
                 parts = data.split()
-                message = Message(event_id=Events.REGISTER,
+                message = Message(event_id=Events.DEREGISTER,
                                   nickname=parts[1])
+                send_hash = hash(message)
+                self.ack_checker[send_hash] = False
                 self.nickname = parts[1]
                 self.client.sendto(message.to_json().encode(
                     'utf-8'), (self.server_ip, self.server_port))
-                self.online = True
+                
+                for _ in range(5):
+                    if not self.ack_checker[send_hash]:
+                        os.sleep(0.5)
+                    else:
+                        self.online = True
+                        continue
+                if self.online == False:
+                    self.logger.info("Server not responding")
+                    self.logger.info("Exiting")
+                    print("Server not responding")
+                    print("Exiting")
+                    os.exit()
 
-            elif data.startswith('dereg '):
+            elif data.startswith('reg '):
                 parts = data.split()
-                message = Message(event_id=Events.DEREGISTER, nickname=parts[1])
+                message = Message(event_id=Events.REGISTER, nickname=parts[1])
                 self.client.sendto(message.to_json().encode('utf-8'), (self.server_ip, self.server_port))
                 self.online = False
                 
@@ -310,6 +328,13 @@ class Client:
         if msg.event_id in [Events.MESSAGE, Events.DIRECT_MESSAGE, Events.REGISTER_CONFIRM]:
             print(f'<<{msg.nickname}>> {msg.data}')
         
+        if msg.event_id == Events.ACK:
+            msg_hash = hash(msg)
+            if msg_hash in self.ack_checker:
+                self.ack_checker[msg_hash] = True
+            else:
+                self.logger.info(f'Invalid ACK from {self.nickname} with hash {msg_hash}')
+
         if msg.event_id == Events.CLIENT_UPDATE:
             print(f'[[Client Table Updated]]')
             self.peers = []
