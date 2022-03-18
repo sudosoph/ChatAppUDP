@@ -231,3 +231,31 @@
 2022-03-18 10:20:22,201|ChatApp|DEBUG|Update clients
 2022-03-18 10:20:52,430|ChatApp|INFO|SEND: Events.DIRECT_MESSAGE|Client1|ClientXXXXX|test to ClientXXXXX @ 127.0.0.1:3002
 2022-03-18 10:21:01,536|ChatApp|INFO|SEND: Events.DIRECT_MESSAGE|ClientXXXXX|Client1|Hi to Client1 @ 127.0.0.1:3001
+2022-03-18 11:08:56,495|ChatApp|INFO|SERVER: 127.0.0.1:9999
+2022-03-18 11:08:56,496|ChatApp|INFO|RECEIVER_THREAD: 127.0.0.1:9999
+2022-03-18 11:09:58,999|ChatApp|INFO|SERVER: 127.0.0.1:9999
+2022-03-18 11:09:58,999|ChatApp|INFO|RECEIVER_THREAD: 127.0.0.1:9999
+2022-03-18 11:10:14,454|ChatApp|DEBUG|REGISTERING: Events.REGISTER|Client1|None|None
+2022-03-18 11:10:14,455|ChatApp|DEBUG|CLIENT RECEIVER: <socket.socket fd=7, family=AddressFamily.AF_INET, type=SocketKind.SOCK_DGRAM, proto=0, laddr=('127.0.0.1', 3001)>
+2022-03-18 11:10:14,460|ChatApp|DEBUG|RECEIVED: ('127.0.0.1', 3001): {"event_id": 1, "nickname": "Client1", "data": null, "recipient": null}
+2022-03-18 11:10:14,463|ChatApp|DEBUG|HANDLE: ('127.0.0.1', 3001) -> None
+2022-03-18 11:10:14,463|ChatApp|INFO|REGISTER REQUEST: ('127.0.0.1', 3001)->Client1
+2022-03-18 11:10:14,464|ChatApp|DEBUG|Failed to find client Client1
+2022-03-18 11:10:14,464|ChatApp|INFO|CLIENT REGISTERED: Client1 to 127.0.0.1:3001
+2022-03-18 11:10:14,464|ChatApp|DEBUG|Found client Client1 = Client1 @ 127.0.0.1:3001
+2022-03-18 11:10:14,464|ChatApp|DEBUG|Matched client Client1 = Client1 @ 127.0.0.1:3001
+2022-03-18 11:10:14,464|ChatApp|DEBUG|SEND: Events.REGISTER_CONFIRM|SERVER|Client1|[[Welcome, you are registered.]] from SERVER @ 127.0.0.1:9999 to Client1 @ 127.0.0.1:3001
+2022-03-18 11:10:14,464|ChatApp|INFO|BROADCAST: Events.CLIENT_UPDATE|SERVER|None|["{\"nickname\": \"Client1\", \"ip\": \"127.0.0.1\", \"port\": 3001, \"online\": true}"] from SERVER @ 127.0.0.1:9999
+2022-03-18 11:10:14,464|ChatApp|INFO|SENDING: Client1 @ 127.0.0.1:3001
+2022-03-18 11:10:14,465|ChatApp|DEBUG|Update clients
+2022-03-18 11:10:14,465|ChatApp|DEBUG|Found client Client1 = Client1 @ 127.0.0.1:3001
+2022-03-18 11:10:14,465|ChatApp|DEBUG|Matched client Client1 = Client1 @ 127.0.0.1:3001
+2022-03-18 11:10:14,465|ChatApp|DEBUG|SEND: Events.ACK|Server|Client1|5592490732305356130 from SERVER @ 127.0.0.1:9999 to Client1 @ 127.0.0.1:3001
+2022-03-18 11:10:14,466|ChatApp|INFO|Invalid ACK from Client1 with hash 4621009015299222561
+2022-03-18 11:11:00,777|ChatApp|DEBUG|RECEIVED: ('127.0.0.1', 3001): {"event_id": 2, "nickname": "Client1", "data": null, "recipient": null}
+2022-03-18 11:11:00,777|ChatApp|DEBUG|HANDLE: ('127.0.0.1', 3001) -> None
+2022-03-18 11:11:00,778|ChatApp|DEBUG|Matched client Client1 = Client1 @ 127.0.0.1:3001
+2022-03-18 11:11:00,778|ChatApp|INFO|DISABLE REQUEST: Client1
+2022-03-18 11:11:00,778|ChatApp|DEBUG|DISABLED: Client1 @ 127.0.0.1:3001
+2022-03-18 11:11:00,778|ChatApp|INFO|BROADCAST: Events.CLIENT_UPDATE|SERVER|None|["{\"nickname\": \"Client1\", \"ip\": \"127.0.0.1\", \"port\": 3001, \"online\": false}"] from SERVER @ 127.0.0.1:9999
+2022-03-18 11:11:00,778|ChatApp|DEBUG|Update clients
