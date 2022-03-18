@@ -65,7 +65,7 @@ class ClientInstance:
     ip: str
     port: int
     online: bool
-    offline_messages: list = []
+    offline_messages = []
 
     def __str__(self):
         status = 'ONLINE' if self.online else 'OFFLINE'
