@@ -1,0 +1,29 @@
+
+Scenario:  Client send a Direct Message to Client2:
+    1. Client creates Message
+    2. Client adds hash to Message as .msg_hash
+    3. Client adds has to ack_checker dictionary as False (not yet ACKed)
+    4. Client sends DM to Client2
+    5. Client2 receives Message
+    6. Client2 creates ACK message where data = incoming message.msg_hash
+    7. Client2 sends ACK as DM to Client1
+    8. Client1 executes self.handle_ack with ACK message
+    9. Client1 check whether has from ACK message.data is in ack_tracker
+    10. Client1 updates ack_tracker entry to True if exists
+    11. Client1 MAY wait to confirm receipt before timeout/retry
+
+    --> Offline message
+    12. If timeout/retry exceeded, we send an offline copy of the message
+    13. Client changes message event_id to OFFLINE_MESSAGE and sends to SERVER
+    14. SERVER check for valid recipient and that target is indeed offline (error message send it not)
+    15. SERVER adds message to recipient's offline_message list
+    16. SERVER sends ACK and message to Client1
+
+    --> Re-register
+    17. Client2 re-registers 
+    18. SERVER updates Client2 registration as needed
+    19. SERVER notifies Client2 that offline messages exists
+    20. SERVER sends each message to Client2
+    21. Client2 sends ACKs to SERVER for each message
+    22. SERVER removes messages from offline queue
+

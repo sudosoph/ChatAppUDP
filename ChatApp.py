@@ -11,14 +11,14 @@ import json
 import logging
 
 # TODO Implement server-side client health checks
-# TODO Implement ACK for message receipt, update receipt, etc.
-# TODO Implement client message send ACK check -> server disable client
-# TODO Implement offline messages
-# TODO implement message hash to use for ACK so that we only ACK a specific message
+# DONE Implement ACK for message receipt, update receipt, etc.
+# DONE Implement client message send ACK check -> server disable client
+# DONE Implement offline messages
+# DONE implement message hash to use for ACK so that we only ACK a specific message
 # DONE client de-reg retry 5 times 500msec each
-# TODO error if offline message sent when recipient is actually online
+# DONE error if offline message sent when recipient is actually online
 # TODO add timestamp to offline message .data property
-# TODO add offline data structure to ClientInstance dataclass
+# DONE add offline data structure to ClientInstance dataclass
 # TODO clean up message formatting to match assignment examples
 # DONE don't allow multiple regs for a single client (reg must dereg first)
 # TODO server and client shutdowns
@@ -39,6 +39,7 @@ class Events(Enum):
     DIRECT_MESSAGE = 11
     OFFLINE_MESSAGE = 12
 
+    ERROR = 98
     ACK = 99
 
 
@@ -139,8 +140,17 @@ class Server:
         self.send_ack(msg)
         self.direct_message(self.server_persona,
                             Message(event_id=Events.REGISTER_CONFIRM, nickname=self.nickname,
-                                    recipient=client.nickname, data='[[Welcome, you are registered.]]'))
+                                    recipient=client.nickname, data='[[ Welcome, you are registered. ]]'))
         self.update_clients()
+        if len(client.offline_messages) > 0:
+            self.direct_message(self.server_persona,
+                            Message(event_id=Events.DIRECT_MESSAGE, nickname=self.nickname,
+                                    recipient=client.nickname, data='[[ You have messages! ]]'))
+            for message in client.offline_messages:
+                self.direct_message(self.server_persona,
+                            Message(event_id=Events.DIRECT_MESSAGE, nickname=message.nickname,
+                                    recipient=message.recipient, data=message.data))
+            client.offline_messages = []
 
     def deregister_client(self, msg):
         client = self.get_client(msg.nickname)
@@ -164,10 +174,15 @@ class Server:
             return True
         return False
 
+    def track_ack(self, msg):
+        self.logger.info(f'TRACK: hash {msg.msg_hash} for {msg}')
+        self.ack_checker[msg.msg_hash] = False
+
+
     def check_ack_timeout(self, msg, timeout, retries):
         intervals = timeout // 10
         sleep_time = timeout / intervals
-        for _ in range(retries):
+        for _ in range(retries+1):
             for _ in range(intervals):
                 if self.check_ack(msg):
                     return True
@@ -176,17 +191,37 @@ class Server:
 
     def receive_ack(self, msg):
         if self.check_ack(msg):
-            self.ack_checker[msg.msg_hash] = True
+            self.ack_checker[msg.data] = True
             self.logger.debug(
-                f'ACK: VALID to {self.nickname} from {msg.nickname} with hash {msg.msg_hash}')
+                f'ACK: VALID to {self.nickname} from {msg.nickname} with hash {msg.data}')
         else:
             self.logger.debug(
-                f'ACK: INVALID to {self.nickname} from {msg.nickname} with hash {msg.msg_hash}')
+                f'ACK: INVALID to {self.nickname} from {msg.nickname} with hash {msg.data}')
 
     def send_ack(self, msg):
         ack_msg = Message(event_id=Events.ACK, nickname=self.nickname,
                           data=msg.msg_hash, recipient=msg.nickname)
         self.direct_message(self.server_persona, ack_msg)
+
+    def store_offline(self, msg):
+        if self.is_client(msg.recipient):
+            target = self.get_client(msg.recipient)
+            if target.online:
+                self.direct_message(self.server_persona,
+                        Message(event_id=Events.ERROR, nickname=self.nickname,
+                                    recipient=msg.nickname, data=f'ERROR: {msg.recipient} IS online!'))
+                self.update_clients()
+            else:
+                target.offline_messages.append(msg)
+                self.send_ack(msg)
+                self.direct_message(self.server_persona,
+                        Message(event_id=Events.DIRECT_MESSAGE, nickname=self.nickname,
+                                     recipient=msg.nickname, data='[[ Message received by the server and saved ]]'))
+        else:
+            self.direct_message(self.server_persona,
+                    Message(event_id=Events.ERROR, nickname=self.nickname,
+                                recipient=msg.nickname, data=f'ERROR: {msg.recipient} does not exist!'))
+            self.update_clients()
 
     def direct_message(self, sending_client, message):
         if self.is_client(message.recipient):
@@ -198,11 +233,6 @@ class Server:
                 self.server.sendto(message.to_json().encode(),
                                    (target_client.ip, target_client.port))
                 self.track_ack(message)
-                if not self.check_ack_timeout(message, TIMEOUT_MESSAGE, 0):
-                    # TODO this is where offline messages would get queued locally on the server
-                    # self.send_offline(message)
-                    pass
-
             except Exception as e:
                 self.logger.info(
                     f'FAILED: send to: {target_client} -> {e} -- DISABLING {target_client}')
@@ -280,6 +310,10 @@ class Server:
                                 recipient=client.nickname, data=f'Unknown nickname {msg.recipient}')
                 self.direct_message(self.server_persona, error)
 
+        if msg.event_id == Events.OFFLINE_MESSAGE:
+            self.logger.info(
+                f'OFFLINE MESSAGE: {msg.nickname} -> {msg.recipient}: {msg.data}')
+            self.store_offline(msg)
 
 # Client Section
 class Client:
@@ -316,24 +350,29 @@ class Client:
         self.ack_checker[msg.msg_hash] = False
 
     def check_ack(self, msg):
-        if msg.data in self.ack_checker:
-            return True
+        self.logger.info(
+            f'ACK: CHECKING from {msg.nickname} with hash {msg.msg_hash}')
+        if msg.msg_hash in self.ack_checker:
+            return self.ack_checker[msg.msg_hash]
         return False
 
     def handle_ack(self, msg):
-        if self.check_ack(msg):
+        self.logger.info(f'HANDLING ACK: {msg.data}')
+        if msg.data in self.ack_checker:
             self.ack_checker[msg.data] = True
-            self.logger.debug(
+            self.logger.info(
                 f'ACK: VALID from {msg.nickname} with hash {msg.data}')
         else:
-            self.logger.debug(
-                f'ACK: INVALID from {msg.nickname} with hash {msg.data}')
+            self.logger.info(
+                f'ACK: MISSING from {msg.nickname} with hash {msg.data}')
 
     def check_ack_timeout(self, msg, timeout, retries):
         intervals = timeout // 10
         sleep_time = timeout / intervals
-        for _ in range(retries):
-            for _ in range(intervals):
+        print(intervals, sleep_time)
+        for r in range(retries+1):
+            for i in range(intervals):
+                print(r,i)
                 if self.check_ack(msg):
                     return True
                 time.sleep(sleep_time/1000)
@@ -342,7 +381,7 @@ class Client:
     def send_ack(self, msg):
         ack_msg = Message(event_id=Events.ACK, nickname=self.nickname,
                           data=msg.msg_hash, recipient=msg.nickname)
-        self.direct_message(self.nickname, ack_msg)
+        self.direct_message(ack_msg)
 
     def register(self, nickname):
         if self.nickname != nickname:
@@ -352,8 +391,8 @@ class Client:
                           nickname=self.nickname, recipient='SERVER')
         reg_msg.msg_hash = hash(reg_msg)
         self.logger.debug(f'REGISTERING: as {self.nickname} using {reg_msg}')
-        self.server_message(reg_msg)
         self.track_ack(reg_msg)
+        self.server_message(reg_msg)
         self.online = True
 
     def deregister(self, nickname):
@@ -361,9 +400,9 @@ class Client:
         reg_msg.msg_hash = hash(reg_msg)
         self.logger.debug(
             f'DE-REGISTERING: as {self.nickname} using {reg_msg}')
-        self.server_message(reg_msg)
         self.track_ack(reg_msg)
-        if self.check_ack_timeout(reg_msg, TIMEOUT_DEREG, 0):
+        self.server_message(reg_msg)
+        if not self.check_ack_timeout(reg_msg, TIMEOUT_DEREG, 5):
             self.logger.debug(
                 f'TIMEOUT: de-register {nickname} hash {hash(reg_msg)}')
             self.logger.debug(f'CLIENT EXIT: {nickname}')
@@ -386,20 +425,28 @@ class Client:
             if peer.online:
                 self.logger.info(f'SEND: {message} to {peer}')
                 try:
-                    self.client.sendto(
-                        message.to_json().encode(), (peer.ip, peer.port))
-                    self.track_ack(message)
-                    if not self.check_ack_timeout(message, TIMEOUT_MESSAGE, 0):
-                        # TODO this is where offline messages would get sent to the server
-                        # self.send_offline(message)
-                        pass
+                    if not message.event_id == Events.ACK:
+                        self.track_ack(message)
+                        self.client.sendto(
+                            message.to_json().encode(), (peer.ip, peer.port))
+                        if not self.check_ack_timeout(message, TIMEOUT_MESSAGE, 0):
+                            self.send_offline(message)
+                    else:
+                        self.client.sendto(
+                            message.to_json().encode(), (peer.ip, peer.port))
                 except Exception as e:
                     self.logger.info(
                         f'FAILED: send to: {peer} -> {e} -- DISABLING {peer}')
                     self.disable_client(peer)
+            if not peer.online:
+                self.send_offline(message)
         else:
             print(f'[[ Unknown peer: {message.recipient} ]]')
             self.logger.info(f'!!UKNOWN: {message.recipient}!!')
+
+    def send_offline(self, message):
+        message.event_id = Events.OFFLINE_MESSAGE
+        self.server_message(message)
 
     def server_message(self, message):
         try:
@@ -477,8 +524,14 @@ class Client:
 
     def handle_message(self, data):
         msg = Message.from_json(data)
-        if msg.event_id in [Events.MESSAGE, Events.DIRECT_MESSAGE, Events.REGISTER_CONFIRM]:
+        if msg.event_id in [Events.DIRECT_MESSAGE, 
+                            Events.REGISTER_CONFIRM, Events.ERROR]:
             print(f'<<{msg.nickname}>> {msg.data}')
+            self.logger.info(f'SEND_ACK: {msg.nickname} with {msg.msg_hash}')
+            self.send_ack(msg)
+
+        if msg.event_id == Events.MESSAGE:
+            print(f'[[{msg.nickname}]] {msg.data}')
 
         if msg.event_id == Events.ACK:
             self.handle_ack(msg)
