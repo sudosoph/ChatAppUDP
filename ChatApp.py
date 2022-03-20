@@ -81,11 +81,14 @@ class ClientInstance:
 
 # Server Section
 
+class Common:
+    pass
 
 class Server:
 
     def __init__(self, port, logger):
-        self.ip = socket.gethostbyname(socket.gethostname())
+        # self.ip = socket.gethostbyname(socket.gethostname())
+        self.ip = '127.0.0.1'
         self.port = port
         self.nickname = 'SERVER'
         self.server_persona = ClientInstance(
@@ -209,6 +212,9 @@ class Server:
             self.logger.debug(f'[No PING-ack from {target}]')
 
     def store_offline(self, msg):
+        self.send_ack(msg)
+        msg = Message.from_json(msg.data)
+        print(f'working on messaage {msg}')
         if self.is_client(msg.recipient) and msg.recipient != self.nickname:
             target = self.get_client(msg.recipient)
             self.check_client(target)
@@ -218,7 +224,6 @@ class Server:
                 self.update_clients()
             else:
                 target.offline_messages.append(msg)
-                self.send_ack(msg)
                 self.direct_message(Message(event_id=Events.DIRECT_MESSAGE, nickname=self.nickname,
                                      recipient=msg.nickname, data='[[ Message received by the server and saved ]]'))
         else:
@@ -340,8 +345,8 @@ class Client:
         self.ack_checker[msg.msg_hash] = False
 
     def check_ack(self, msg):
-        self.logger.debug(
-            f'ACK: CHECKING from {msg.nickname} with hash {msg.msg_hash}')
+        # self.logger.debug(
+        #     f'ACK: CHECKING from {msg.nickname} with hash {msg.msg_hash}')
         if msg.msg_hash in self.ack_checker:
             return self.ack_checker[msg.msg_hash]
         return False
@@ -416,10 +421,11 @@ class Client:
                 try:
                     if not message.event_id == Events.ACK:
                         self.track_ack(message)
+                        print(f'====> {peer.ip} {peer.port}')
                         self.client.sendto(
                             message.to_json().encode(), (peer.ip, peer.port))
                         if not self.check_ack_timeout(message, TIMEOUT_MESSAGE, 0):
-                            self.send_offline(message)
+                            self.offline_send(message)
                             print(f'[No ACK from {message.recipient}, message sent to server.]')
                         else:
                             print(f'[Message received by {message.recipient}.]')
@@ -431,16 +437,23 @@ class Client:
                         f'FAILED: send to: {peer} -> {e} -- DISABLING {peer}')
                     self.disable_client(peer)
             if not peer.online:
-                self.send_offline(message)
+                self.offline_send(message)
         else:
             print(f'[[ Unknown peer: {message.recipient} ]]')
             self.logger.debug(f'!!UKNOWN: {message.recipient}!!')
 
-    def send_offline(self, message):
-        message.event_id = Events.OFFLINE_MESSAGE
-        ts = datetime.datetime.now()
-        message.data = str(ts) + ' ' + message.data
-        self.server_message(message)
+    # def send_offline(self, message):
+    #     message.event_id = Events.OFFLINE_MESSAGE
+    #     ts = datetime.datetime.now()
+    #     message.data = str(ts) + ' ' + message.data
+    #     self.server_message(message)
+
+    def offline_send(self, message):
+        offline_msg = Message(event_id=Events.OFFLINE_MESSAGE, nickname=self.nickname, recipient='SERVER',
+                               data=message.to_json())
+        offline_msg.msg_hash = hash(offline_msg)
+        self.track_ack(offline_msg)
+        self.direct_message(offline_msg)
 
     def server_message(self, message):
         try:
