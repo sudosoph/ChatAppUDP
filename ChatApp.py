@@ -36,7 +36,7 @@ class Events(Enum):
     REGISTER_CONFIRM = 3
     CLIENT_UPDATE = 4
 
-    MESSAGE = 10
+    BROADCAST = 10
     DIRECT_MESSAGE = 11
     OFFLINE_MESSAGE = 12
 
@@ -81,8 +81,10 @@ class ClientInstance:
 
 # Server Section
 
+
 class Common:
     pass
+
 
 class Server:
 
@@ -93,7 +95,7 @@ class Server:
         self.nickname = 'SERVER'
         self.server_persona = ClientInstance(
             nickname=self.nickname, ip=self.ip, port=self.port, online=True)
-        self.clients = [ self.server_persona ]
+        self.clients = [self.server_persona]
         self.inputBuffer = Queue()
         self.ack_checker = {}
         self.logger = logger
@@ -136,7 +138,8 @@ class Server:
             self.logger.info(
                 f'CLIENT UPDATED: {msg.nickname} to {addr[0]}:{addr[1]}')
         else:
-            self.logger.info(f'CLIENT REGISTERED: {msg.nickname} at {addr[0]}:{addr[1]}')
+            self.logger.info(
+                f'CLIENT REGISTERED: {msg.nickname} at {addr[0]}:{addr[1]}')
             client = ClientInstance(ip=addr[0], port=int(
                 addr[1]), nickname=msg.nickname, online=True)
             self.clients.append(client)
@@ -148,7 +151,7 @@ class Server:
         self.update_clients()
         if len(client.offline_messages) > 0:
             self.direct_message(Message(event_id=Events.DIRECT_MESSAGE, nickname=self.nickname,
-                                    recipient=client.nickname, data='[[ You have messages! ]]'))
+                                        recipient=client.nickname, data='[[ You have messages! ]]'))
             for message in client.offline_messages:
                 self.direct_message(Message(event_id=Events.DIRECT_MESSAGE, nickname=message.nickname,
                                     recipient=message.recipient, data=message.data))
@@ -202,7 +205,7 @@ class Server:
 
     def check_client(self, target):
         ping = Message(event_id=Events.PING, nickname=self.nickname,
-                                    recipient=target.nickname, data=f'PING!')
+                       recipient=target.nickname, data=f'PING!')
         ping.msg_hash = hash(ping)
         self.track_ack(ping)
         self.direct_message(ping)
@@ -225,7 +228,7 @@ class Server:
             else:
                 target.offline_messages.append(msg)
                 self.direct_message(Message(event_id=Events.DIRECT_MESSAGE, nickname=self.nickname,
-                                     recipient=msg.nickname, data='[[ Message received by the server and saved ]]'))
+                                            recipient=msg.nickname, data='[[ Message received by the server and saved ]]'))
         else:
             self.direct_message(Message(event_id=Events.ERROR, nickname=self.nickname,
                                 recipient=msg.nickname, data=f'ERROR: {msg.recipient} does not exist!'))
@@ -251,7 +254,7 @@ class Server:
     def broadcast(self, message, sending_client):
         self.logger.debug(f'BROADCAST: {message} from {sending_client}')
         for client in self.clients:
-            if client != sending_client and client.online:
+            if client != sending_client and client.online and client.nickname != 'SERVER':
                 try:
                     self.logger.debug(f'SENDING: {client}')
                     self.server.sendto(
@@ -261,7 +264,7 @@ class Server:
                     self.logger.info(
                         f'FAILED: send to: {client} -> {e} -- DISABLING {client}')
                     self.disable_client(client)
-    
+
     def server_thread(self):
         self.server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -296,7 +299,7 @@ class Server:
         if msg.event_id == Events.ACK:
             self.receive_ack(msg)
 
-        if msg.event_id == Events.MESSAGE:
+        if msg.event_id == Events.BROADCAST:
             client = self.get_client(msg.nickname)
             if client is None:
                 self.logger.info('ERROR: unknown sender - dropping message!')
@@ -310,6 +313,8 @@ class Server:
             self.store_offline(msg)
 
 # Client Section
+
+
 class Client:
 
     def __init__(self, name, client_port, ip, port, logger):
@@ -389,7 +394,8 @@ class Client:
         self.online = True
 
     def deregister(self, nickname):
-        reg_msg = Message(event_id=Events.DEREGISTER, nickname=nickname, recipient='SERVER')
+        reg_msg = Message(event_id=Events.DEREGISTER,
+                          nickname=nickname, recipient='SERVER')
         reg_msg.msg_hash = hash(reg_msg)
         self.logger.debug(
             f'DE-REGISTERING: as {self.nickname} using {reg_msg}')
@@ -426,9 +432,11 @@ class Client:
                             message.to_json().encode(), (peer.ip, peer.port))
                         if not self.check_ack_timeout(message, TIMEOUT_MESSAGE, 0):
                             self.offline_send(message)
-                            print(f'[No ACK from {message.recipient}, message sent to server.]')
+                            print(
+                                f'[No ACK from {message.recipient}, message sent to server.]')
                         else:
-                            print(f'[Message received by {message.recipient}.]')
+                            print(
+                                f'[Message received by {message.recipient}.]')
                     else:
                         self.client.sendto(
                             message.to_json().encode(), (peer.ip, peer.port))
@@ -442,25 +450,19 @@ class Client:
             print(f'[[ Unknown peer: {message.recipient} ]]')
             self.logger.debug(f'!!UKNOWN: {message.recipient}!!')
 
-    # def send_offline(self, message):
-    #     message.event_id = Events.OFFLINE_MESSAGE
-    #     ts = datetime.datetime.now()
-    #     message.data = str(ts) + ' ' + message.data
-    #     self.server_message(message)
-
     def offline_send(self, message):
         offline_msg = Message(event_id=Events.OFFLINE_MESSAGE, nickname=self.nickname, recipient='SERVER',
-                               data=message.to_json())
+                              data=message.to_json())
         offline_msg.msg_hash = hash(offline_msg)
         self.track_ack(offline_msg)
         self.direct_message(offline_msg)
 
-    def server_message(self, message):
-        try:
-            self.client.sendto(message.to_json().encode(
-                'utf-8'), (self.server_ip, self.server_port))
-        except Exception as e:
-            self.logger.info(f'FAILED: send to: SERVER -> {e}')
+    # def server_message(self, message):
+    #     try:
+    #         self.client.sendto(message.to_json().encode(
+    #             'utf-8'), (self.server_ip, self.server_port))
+    #     except Exception as e:
+    #         self.logger.info(f'FAILED: send to: SERVER -> {e}')
 
     def client_receiver(self, sock):
         self.logger.debug(f'CLIENT RECEIVER: {sock}')
@@ -490,8 +492,8 @@ class Client:
 
             if data.startswith('send_all '):
                 parts = data.split()
-                message = Message(event_id=Events.MESSAGE, nickname=self.nickname,
-                                  data=' '.join(parts[1:]))
+                message = Message(event_id=Events.BROADCAST, nickname=self.nickname,
+                                  recipient='SERVER', data=' '.join(parts[1:]))
                 self.server_message(message)
 
             if data.startswith('send '):
@@ -531,13 +533,13 @@ class Client:
 
     def handle_message(self, data):
         msg = Message.from_json(data)
-        if msg.event_id in [Events.DIRECT_MESSAGE, 
+        if msg.event_id in [Events.DIRECT_MESSAGE,
                             Events.REGISTER_CONFIRM, Events.ERROR]:
             print(f'<<{msg.nickname}>> {msg.data}')
             self.logger.debug(f'SEND_ACK: {msg.nickname} with {msg.msg_hash}')
             self.send_ack(msg)
 
-        if msg.event_id == Events.MESSAGE:
+        if msg.event_id == Events.BROADCAST:
             print(f'[[{msg.nickname}]] {msg.data}')
 
         if msg.event_id == Events.ACK:
@@ -548,8 +550,9 @@ class Client:
 
         if msg.event_id == Events.PING:
             ack_msg = Message(event_id=Events.ACK, nickname=self.nickname,
-                          data=msg.msg_hash, recipient=msg.nickname)
-            self.server_message(ack_msg)
+                              data=msg.msg_hash, recipient=msg.nickname)
+            self.direct_message(ack_msg)
+
 
 def get_args():
     parser = argparse.ArgumentParser("Chat Application")
