@@ -1,4 +1,4 @@
 #!/bin/bash
 
-. venv/bin/activate
+# . venv/bin/activate
 python3 ./ChatApp.py client -n Client4 -i 127.0.0.1 -p 9999 -c 3004
